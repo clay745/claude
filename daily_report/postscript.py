@@ -10,7 +10,7 @@ class PostscriptClient:
         # Postscript supports both Bearer and Token auth — try Token (private key standard)
         self.api_key = api_key
         self.headers = {
-            "Authorization": f"Token {api_key}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
         }
