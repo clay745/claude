@@ -72,6 +72,7 @@ class KlaviyoClient:
             time.sleep(0.3)
 
         self._metric_cache = metrics
+        print(f"  [debug] loaded {len(metrics)} metrics: {sorted(metrics.keys())}")
         return metrics
 
     def _aggregate(self, metric_name: str, measurement: str, start: str, end: str) -> float:
