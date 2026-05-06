@@ -1,0 +1,64 @@
+name: Daily Marketing Report
+
+on:
+  schedule:
+    # Runs at 8:00 AM Central Time (14:00 UTC)
+    - cron: '0 14 * * *'
+  workflow_dispatch: # allows manual trigger from GitHub UI
+
+jobs:
+  run-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r daily_report/requirements.txt
+
+      - name: Write credentials.json
+        run: echo '${{ secrets.GOOGLE_CREDENTIALS_JSON }}' > daily_report/credentials.json
+
+      - name: Write .env file
+        run: |
+          cat > daily_report/.env << EOF
+          GOOGLE_SHEET_ID=${{ secrets.GOOGLE_SHEET_ID }}
+          GOOGLE_CREDENTIALS_FILE=credentials.json
+          TIMEZONE=America/Chicago
+
+          BRAND1_NAME=${{ secrets.BRAND1_NAME }}
+          BRAND1_KLAVIYO_KEY=${{ secrets.BRAND1_KLAVIYO_KEY }}
+          BRAND1_POSTSCRIPT_KEY=${{ secrets.BRAND1_POSTSCRIPT_KEY }}
+          BRAND1_SHEET_TAB=${{ secrets.BRAND1_SHEET_TAB }}
+
+          BRAND2_NAME=${{ secrets.BRAND2_NAME }}
+          BRAND2_KLAVIYO_KEY=${{ secrets.BRAND2_KLAVIYO_KEY }}
+          BRAND2_POSTSCRIPT_KEY=${{ secrets.BRAND2_POSTSCRIPT_KEY }}
+          BRAND2_SHEET_TAB=${{ secrets.BRAND2_SHEET_TAB }}
+
+          BRAND3_NAME=${{ secrets.BRAND3_NAME }}
+          BRAND3_KLAVIYO_KEY=${{ secrets.BRAND3_KLAVIYO_KEY }}
+          BRAND3_POSTSCRIPT_KEY=${{ secrets.BRAND3_POSTSCRIPT_KEY }}
+          BRAND3_SHEET_TAB=${{ secrets.BRAND3_SHEET_TAB }}
+
+          BRAND4_NAME=${{ secrets.BRAND4_NAME }}
+          BRAND4_KLAVIYO_KEY=${{ secrets.BRAND4_KLAVIYO_KEY }}
+          BRAND4_POSTSCRIPT_KEY=${{ secrets.BRAND4_POSTSCRIPT_KEY }}
+          BRAND4_SHEET_TAB=${{ secrets.BRAND4_SHEET_TAB }}
+
+          BRAND5_NAME=${{ secrets.BRAND5_NAME }}
+          BRAND5_KLAVIYO_KEY=${{ secrets.BRAND5_KLAVIYO_KEY }}
+          BRAND5_POSTSCRIPT_KEY=${{ secrets.BRAND5_POSTSCRIPT_KEY }}
+          BRAND5_SHEET_TAB=${{ secrets.BRAND5_SHEET_TAB }}
+          EOF
+
+      - name: Run daily report
+        run: |
+          cd daily_report
+          python main.py
