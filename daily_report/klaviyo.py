@@ -7,13 +7,12 @@ BASE_URL = "https://a.klaviyo.com/api"
 REVISION = "2024-02-15"
 
 METRIC_PLACED_ORDER = "Placed Order"
-METRIC_SENT_EMAIL = "Sent Email"
-METRIC_DELIVERED_EMAIL = "Delivered Email"
+METRIC_RECEIVED_EMAIL = "Received Email"
+METRIC_BOUNCED_EMAIL = "Bounced Email"
 METRIC_OPENED_EMAIL = "Opened Email"
 METRIC_CLICKED_EMAIL = "Clicked Email"
-METRIC_SUBSCRIBED = "Subscribed to List"
-METRIC_UNSUBSCRIBED = "Unsubscribed"
-METRIC_UNSUBSCRIBED_ALT = "Unsubscribed from List"
+METRIC_SUBSCRIBED = "Subscribed to Email Marketing"
+METRIC_UNSUBSCRIBED = "Unsubscribed from Email Marketing"
 
 
 class KlaviyoClient:
@@ -72,7 +71,6 @@ class KlaviyoClient:
             time.sleep(0.3)
 
         self._metric_cache = metrics
-        print(f"  [debug] loaded {len(metrics)} metrics: {sorted(metrics.keys())}")
         return metrics
 
     def _aggregate(self, metric_name: str, measurement: str, start: str, end: str) -> float:
@@ -153,9 +151,9 @@ class KlaviyoClient:
     def fetch(self) -> dict:
         start, end = self.yesterday_range()
 
-        sent = self._aggregate(METRIC_SENT_EMAIL, "count", start, end)
+        received = self._aggregate(METRIC_RECEIVED_EMAIL, "count", start, end)
         time.sleep(0.5)
-        delivered = self._aggregate(METRIC_DELIVERED_EMAIL, "count", start, end)
+        bounced = self._aggregate(METRIC_BOUNCED_EMAIL, "count", start, end)
         time.sleep(0.5)
         opened = self._aggregate(METRIC_OPENED_EMAIL, "count", start, end)
         time.sleep(0.5)
@@ -165,24 +163,21 @@ class KlaviyoClient:
         time.sleep(0.5)
         gained = self._aggregate(METRIC_SUBSCRIBED, "count", start, end)
         time.sleep(0.5)
-
-        # Try primary unsubscribe metric name, fall back to alternate
-        metrics = self._load_metrics()
-        unsub_metric = METRIC_UNSUBSCRIBED if METRIC_UNSUBSCRIBED in metrics else METRIC_UNSUBSCRIBED_ALT
-        lost = self._aggregate(unsub_metric, "count", start, end)
+        lost = self._aggregate(METRIC_UNSUBSCRIBED, "count", start, end)
         time.sleep(0.5)
 
         total_list = self.get_total_email_list()
         time.sleep(0.5)
         send_type = self.get_send_type(start, end)
 
-        deliverability = round(delivered / sent * 100, 2) if sent else 0.0
-        open_rate = round(opened / delivered * 100, 2) if delivered else 0.0
-        click_rate = round(clicked / delivered * 100, 2) if delivered else 0.0
+        emails_sent = int(received + bounced)
+        deliverability = round(received / emails_sent * 100, 2) if emails_sent else 0.0
+        open_rate = round(opened / received * 100, 2) if received else 0.0
+        click_rate = round(clicked / received * 100, 2) if received else 0.0
 
         return {
             "email_revenue": round(revenue, 2),
-            "emails_sent": int(sent),
+            "emails_sent": emails_sent,
             "deliverability": deliverability,
             "open_rate": open_rate,
             "click_rate": click_rate,
