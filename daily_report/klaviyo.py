@@ -1,12 +1,11 @@
 import requests
+import time
 from datetime import datetime, timedelta
-from typing import Optional
 import pytz
 
 BASE_URL = "https://a.klaviyo.com/api"
 REVISION = "2024-02-15"
 
-# Klaviyo metric names — these must match exactly what's in your account
 METRIC_PLACED_ORDER = "Placed Order"
 METRIC_SENT_EMAIL = "Sent Email"
 METRIC_DELIVERED_EMAIL = "Delivered Email"
@@ -14,10 +13,11 @@ METRIC_OPENED_EMAIL = "Opened Email"
 METRIC_CLICKED_EMAIL = "Clicked Email"
 METRIC_SUBSCRIBED = "Subscribed to List"
 METRIC_UNSUBSCRIBED = "Unsubscribed"
+METRIC_UNSUBSCRIBED_ALT = "Unsubscribed from List"
 
 
 class KlaviyoClient:
-    def __init__(self, api_key: str, timezone: str = "America/New_York"):
+    def __init__(self, api_key: str, timezone: str = "America/Chicago"):
         self.headers = {
             "Authorization": f"Klaviyo-API-Key {api_key}",
             "revision": REVISION,
@@ -27,15 +27,25 @@ class KlaviyoClient:
         self.tz = pytz.timezone(timezone)
         self._metric_cache: dict = {}
 
-    def _get(self, path: str, params: dict = None) -> dict:
-        r = requests.get(f"{BASE_URL}/{path}", headers=self.headers, params=params or {})
+    def _get(self, url: str, params: dict = None) -> dict:
+        # Accept either a full URL or a path
+        full_url = url if url.startswith("http") else f"{BASE_URL}/{url}"
+        r = requests.get(full_url, headers=self.headers, params=params or {})
         r.raise_for_status()
         return r.json()
 
-    def _post(self, path: str, body: dict) -> dict:
-        r = requests.post(f"{BASE_URL}/{path}", headers=self.headers, json=body)
+    def _post(self, path: str, body: dict, retries: int = 3) -> dict:
+        for attempt in range(retries):
+            r = requests.post(f"{BASE_URL}/{path}", headers=self.headers, json=body)
+            if r.status_code == 429:
+                wait = 2 ** attempt
+                print(f"  [rate limit] waiting {wait}s before retry...")
+                time.sleep(wait)
+                continue
+            r.raise_for_status()
+            return r.json()
         r.raise_for_status()
-        return r.json()
+        return {}
 
     def yesterday_range(self) -> tuple[str, str]:
         today = datetime.now(self.tz).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -53,20 +63,20 @@ class KlaviyoClient:
             return self._metric_cache
 
         metrics = {}
-        url = "metrics"
+        url = f"{BASE_URL}/metrics"
         while url:
             data = self._get(url)
             for m in data.get("data", []):
                 metrics[m["attributes"]["name"]] = m["id"]
-            next_link = data.get("links", {}).get("next")
-            # next_link is a full URL; strip base for _get
-            url = next_link.replace(f"{BASE_URL}/", "") if next_link else None
+            url = data.get("links", {}).get("next")  # full URL, pass directly
+            time.sleep(0.3)
 
         self._metric_cache = metrics
         return metrics
 
     def _aggregate(self, metric_name: str, measurement: str, start: str, end: str) -> float:
-        metric_id = self._load_metrics().get(metric_name)
+        metrics = self._load_metrics()
+        metric_id = metrics.get(metric_name)
         if not metric_id:
             print(f"  [warn] metric not found: {metric_name}")
             return 0.0
@@ -105,28 +115,31 @@ class KlaviyoClient:
         return 0.0
 
     def get_total_email_list(self) -> int:
-        data = self._get("profiles", {
-            "page[size]": 1,
-            "filter": "equals(subscriptions.email.marketing.can_receive_email_marketing,true)",
-        })
-        return data.get("meta", {}).get("total", 0)
+        # Use lists endpoint to count all profiles — simpler and more reliable
+        try:
+            data = self._get(f"{BASE_URL}/profiles", {"page[size]": 1})
+            return data.get("meta", {}).get("total", 0)
+        except Exception as e:
+            print(f"  [warn] could not get total profiles: {e}")
+            return 0
 
     def get_send_type(self, start: str, end: str) -> str:
-        """Returns Campaign, Flow, or Both based on what sent emails yesterday."""
-        data = self._get("campaigns", {
-            "filter": (
-                f"greater-or-equal(scheduled_at,{start}),"
-                f"less-than(scheduled_at,{end}),"
-                "equals(status,'Sent')"
-            ),
-            "fields[campaign]": "id",
-            "page[size]": 1,
-        })
-        had_campaign = len(data.get("data", [])) > 0
+        try:
+            data = self._get(f"{BASE_URL}/campaigns", {
+                "filter": (
+                    f"greater-or-equal(scheduled_at,{start}),"
+                    f"less-than(scheduled_at,{end}),"
+                    "equals(status,'Sent')"
+                ),
+                "fields[campaign]": "id",
+                "page[size]": 1,
+            })
+            had_campaign = len(data.get("data", [])) > 0
+        except Exception:
+            had_campaign = False
 
-        # Flows always run, so check if flow emails were sent via metric
         flow_sent = self._aggregate(METRIC_SENT_EMAIL, "count", start, end)
-        had_flow = flow_sent > 0 and not had_campaign  # simplistic; refine if needed
+        had_flow = flow_sent > 0 and not had_campaign
 
         if had_campaign and had_flow:
             return "Both"
@@ -140,13 +153,26 @@ class KlaviyoClient:
         start, end = self.yesterday_range()
 
         sent = self._aggregate(METRIC_SENT_EMAIL, "count", start, end)
+        time.sleep(0.5)
         delivered = self._aggregate(METRIC_DELIVERED_EMAIL, "count", start, end)
+        time.sleep(0.5)
         opened = self._aggregate(METRIC_OPENED_EMAIL, "count", start, end)
+        time.sleep(0.5)
         clicked = self._aggregate(METRIC_CLICKED_EMAIL, "count", start, end)
+        time.sleep(0.5)
         revenue = self._aggregate(METRIC_PLACED_ORDER, "sum_value", start, end)
+        time.sleep(0.5)
         gained = self._aggregate(METRIC_SUBSCRIBED, "count", start, end)
-        lost = self._aggregate(METRIC_UNSUBSCRIBED, "count", start, end)
+        time.sleep(0.5)
+
+        # Try primary unsubscribe metric name, fall back to alternate
+        metrics = self._load_metrics()
+        unsub_metric = METRIC_UNSUBSCRIBED if METRIC_UNSUBSCRIBED in metrics else METRIC_UNSUBSCRIBED_ALT
+        lost = self._aggregate(unsub_metric, "count", start, end)
+        time.sleep(0.5)
+
         total_list = self.get_total_email_list()
+        time.sleep(0.5)
         send_type = self.get_send_type(start, end)
 
         deliverability = round(delivered / sent * 100, 2) if sent else 0.0

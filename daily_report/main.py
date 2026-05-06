@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 import pytz
 import traceback
 
+import time
 from config import BRANDS, TIMEZONE
 from klaviyo import KlaviyoClient
 from postscript import PostscriptClient
@@ -73,6 +74,8 @@ def run():
         except Exception as e:
             print(f"  ✗ Failed for {name}: {e}")
             traceback.print_exc()
+
+        time.sleep(2)  # pause between brands to avoid rate limits
 
     print(f"\n{'─' * 50}")
     print("All brands processed.")
