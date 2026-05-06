@@ -113,6 +113,61 @@ class KlaviyoClient:
 
         return 0.0
 
+    def get_email_attributed_revenue(self, start: str, end: str) -> float:
+        """
+        Sum revenue from orders attributed to campaigns OR flows only.
+        Groups Placed Order by $attributed_message and $attributed_flow,
+        then sums rows with a non-empty dimension (i.e. actually attributed).
+        """
+        metric_id = self._load_metrics().get(METRIC_PLACED_ORDER)
+        if not metric_id:
+            return 0.0
+
+        yesterday = self.yesterday_date()
+        total = 0.0
+
+        for attribution_dim in ["$attributed_message", "$attributed_flow"]:
+            body = {
+                "data": {
+                    "type": "metric-aggregate",
+                    "attributes": {
+                        "metric_id": metric_id,
+                        "interval": "day",
+                        "page_size": 500,
+                        "measurements": ["sum_value"],
+                        "by": [attribution_dim],
+                        "filter": (
+                            f"greater-or-equal(datetime,{start}),"
+                            f"less-than(datetime,{end})"
+                        ),
+                        "timezone": str(self.tz),
+                    },
+                }
+            }
+
+            result = self._post("metric-aggregates", body)
+            attrs = result.get("data", {}).get("attributes", {})
+            dates = attrs.get("dates", [])
+            data_rows = attrs.get("data", [])
+
+            date_idx = next((i for i, d in enumerate(dates) if d[:10] == yesterday), None)
+            if date_idx is None:
+                continue
+
+            for row in data_rows:
+                dims = row.get("dimensions", [])
+                # Only count rows where the attribution dimension is set (non-empty)
+                if dims and dims[0]:
+                    values = row.get("measurements", {}).get("sum_value", [])
+                    if date_idx < len(values) and values[date_idx]:
+                        total += float(values[date_idx])
+
+            time.sleep(0.5)
+
+        return round(total, 2)
+
+        return 0.0
+
     def get_total_email_list(self) -> int:
         # Use lists endpoint to count all profiles — simpler and more reliable
         try:
@@ -159,7 +214,7 @@ class KlaviyoClient:
         time.sleep(0.5)
         clicked = self._aggregate(METRIC_CLICKED_EMAIL, "count", start, end)
         time.sleep(0.5)
-        revenue = self._aggregate(METRIC_PLACED_ORDER, "sum_value", start, end)
+        revenue = self.get_email_attributed_revenue(start, end)
         time.sleep(0.5)
         gained = self._aggregate(METRIC_SUBSCRIBED, "count", start, end)
         time.sleep(0.5)
