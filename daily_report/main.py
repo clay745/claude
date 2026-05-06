@@ -43,33 +43,31 @@ def run():
             postscript = PostscriptClient(brand["postscript_key"], TIMEZONE)
             sms_data = postscript.fetch()
 
-            total_rev = round(email_data["email_revenue"] + sms_data["sms_revenue"], 2)
-
             row = {
                 "Date": date_label,
                 "Email Rev": email_data["email_revenue"],
-                "SMS Rev": sms_data["sms_revenue"],
-                "Total Rev": total_rev,
+                "SMS Rev": "",           # fill in manually from Postscript
+                "Total Rev": "",         # fill in manually after SMS Rev
                 "Deliverability": f"{email_data['deliverability']}%",
                 "Open Rate": f"{email_data['open_rate']}%",
                 "Click Rate": f"{email_data['click_rate']}%",
                 "Total Email List": email_data["total_email_list"],
-                "Total SMS List": sms_data["total_sms_list"],
+                "Total SMS List": "",    # fill in manually from Postscript
                 "Email Gain": email_data["email_gain"],
                 "Email Lost": email_data["email_lost"],
                 "Email Net": email_data["email_net"],
-                "SMS Gain": sms_data["sms_gain"],
-                "SMS Lost": sms_data["sms_lost"],
-                "SMS Net": sms_data["sms_net"],
+                "SMS Gain": "",          # fill in manually from Postscript
+                "SMS Lost": "",          # fill in manually from Postscript
+                "SMS Net": "",           # fill in manually from Postscript
                 "Emails Sent": email_data["emails_sent"],
                 "Type": email_data["type"],
-                "Pop Up Opt In": f"{sms_data['popup_opt_in']}%",
+                "Pop Up Opt In": "",     # fill in manually from Postscript
             }
 
             print(f"  Writing to sheet tab: {brand['sheet_tab']}")
             sheets.append_row(brand["sheet_tab"], row)
 
-            print(f"  ✓ Done — Email Rev: ${row['Email Rev']} | SMS Rev: ${row['SMS Rev']} | Total: ${total_rev}")
+            print(f"  ✓ Done — Email Rev: ${row['Email Rev']} | Deliverability: {row['Deliverability']} | Open Rate: {row['Open Rate']}")
 
         except Exception as e:
             print(f"  ✗ Failed for {name}: {e}")
