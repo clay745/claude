@@ -137,7 +137,7 @@ class KlaviyoClient:
         except Exception:
             had_campaign = False
 
-        flow_sent = self._aggregate(METRIC_SENT_EMAIL, "count", start, end)
+        flow_sent = self._aggregate(METRIC_RECEIVED_EMAIL, "count", start, end)
         had_flow = flow_sent > 0 and not had_campaign
 
         if had_campaign and had_flow:
